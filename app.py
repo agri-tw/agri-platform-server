@@ -3,8 +3,12 @@ import os
 import flask
 import google.generativeai as genai
 from dotenv import load_dotenv
+from flask_cors import CORS
+
+CORS_ALLOW_ORIGINS = ["https://firebase.com", "https://agricultural-platform.web.app", "https://localhost:5173"]
 
 app = flask.Flask(__name__)
+CORS(app, resources={r"/*": {"origins": CORS_ALLOW_ORIGINS}})
 
 
 load_dotenv()
