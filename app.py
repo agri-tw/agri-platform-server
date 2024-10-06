@@ -9,7 +9,7 @@ from neuralforecast import NeuralForecast
 import typing_extensions as typing
 from utils import generate_prompt
 from utils import get_rainfall_data
-from utils import get_temperature_data
+from utils import get_weather_data
 from utils import get_year_data
 import utils
 
@@ -42,6 +42,8 @@ def test(name=None):
 def predict():
     rainfall_nf = NeuralForecast.load(path='./model/rain_model')
     temperature_nf = NeuralForecast.load(path='./model/temp_model')
+    moist_nf = NeuralForecast.load(path='./model/moist_model')
+    wind_speed_nf = NeuralForecast.load(path='./model/wind_speed_model')
 
     data, error = utils.get_input()
     if not data:
@@ -51,11 +53,19 @@ def predict():
     
     lat, long, crop, language = data
 
-    rainfall_df = get_rainfall_data(0, long, lat)
-    temperature_df = get_temperature_data(long, lat)
+    try:
+        rainfall_df = get_rainfall_data(0, long, lat)
+        temperature_df = get_weather_data("T2M",long, lat)
+        moist_df = get_weather_data("RH2M",long, lat)
+        wind_speed_df = get_weather_data("WS2M",long, lat)
+    except:
+        code, message = error or (400, "internal error")
+        error_json = {"error": {"code": code, "message": message}}
+        return error_json, 400
+
 
     # Check if data is valid 
-    if rainfall_df.empty or temperature_df.empty:
+    if rainfall_df.empty or temperature_df.empty or moist_df.empty or wind_speed_df.empty:
         print("invalid data")
         return 0
     
@@ -63,6 +73,8 @@ def predict():
     
     rainfall_forecast = rainfall_nf.predict(rainfall_df)
     temperature_forecast = temperature_nf.predict(temperature_df)
+    moist_forecast = moist_nf.predict(moist_df)
+    wind_speed_forecast = wind_speed_nf.predict(wind_speed_df)
 
     # Format the forecast into a query
 
@@ -70,10 +82,29 @@ def predict():
     rainfall_data = rainfall_data.rename(columns={'y': 'Rainfall'})
     temperature_data = get_year_data(temperature_forecast, temperature_df)
     temperature_data = temperature_data.rename(columns={'y': 'Temperature'})
-    
-    all_data = pd.merge(rainfall_data, temperature_data, on='ds')
+    moist_data = get_year_data(moist_forecast, moist_df)
+    moist_data = moist_data.rename(columns={'y': 'Moist'})
+    wind_speed_data = get_year_data(wind_speed_forecast, wind_speed_df)
+    wind_speed_data = wind_speed_data.rename(columns={'y': 'Wind Speed'})
+
+    # Start with the initial dataframe
+    all_data = rainfall_data.copy()
+
+    # List of dataframes to merge
+    dataframes_to_merge = [temperature_data, moist_data, wind_speed_data]
+
+    for df in dataframes_to_merge:
+        # Identify columns that are not in all_data
+        columns_to_use = df.columns.difference(all_data.columns).tolist() + ['ds']
+        # Merge using only non-duplicate columns and 'ds' as the key
+        all_data = pd.merge(all_data, df[columns_to_use], on='ds')
+
+    # Rename 'ds' column to 'Date'
     all_data = all_data.rename(columns={'ds': 'Date'})
+
+    # Ensure 'Rainfall' values are non-negative
     all_data.loc[all_data['Rainfall'] < 0, 'Rainfall'] = 0.0
+
 
     prompt = generate_prompt(all_data, crop, language)
     print(prompt)
@@ -86,24 +117,6 @@ def predict():
         soil_and_nutrient_management: str
         crop_selection_and_rotation: str
         harvest_and_post_harvest_management: str
-
-    # prompt = """You are an expert in agriculture. Suggest some risk mitigation strategies based on the data:
-    #     Crop type: corn
-    #     Past Precipitation: 100mm
-    #     Future Precipitation: 200mm
-    #     Past Temperature: 30C
-    #     Future Temperature: 35C
-    #     Past Soil Moisture: 50%
-    #     Future Soil Moisture: 40%
-    #     format should be:
-    #     1. Irrigation Management
-    #     2. Temperature Management
-    #     3. Pest and Disease Management
-    #     4. Soil and Nutrient Management
-    #     5. Crop Selection and Rotation
-    #     6. Harvest and Post-Harvest Management
-    # """
-    # Get response from gemini
     raw_response = model.generate_content(
         prompt,
         generation_config=genai.GenerationConfig(response_mime_type="application/json", response_schema=Report),

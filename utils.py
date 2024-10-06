@@ -56,12 +56,14 @@ def generate_prompt(df, crop, language):
 Today's date is {today}.
 The crop type is {crop}. 
 Write a easy to understand document in {language} aiming to suggesting risk mitigation strategies and implement sustainable farming practices based on the following 18 months of data:
-Give more concrete advice, tell us what to do rather than explanation.(example: action_you_should_take_immediately: rush in the harvest)
-Write in columnar format. Be specific about the strategies. Your decision is very important and may affect people's lives.\n"""
+Give concrete advices, tell us what to do rather than explanation.(example: action_you_should_take_immediately: rush in the harvest)
+Write in columnar format. Be concise about the strategies. Your decision is very important and may affect people's lives.\n"""
     for index, row in df.iterrows():
         prompt += (
-            f"Date: {row['Date']} | Avg_Temperature: {row['Temperature']}°C | "
-            f"Rainfall_of_the_month: {row['Rainfall']*30} mm \n"
+            f"Date: {row['Date']} | Averge_Temperature: {row['Temperature']}°C | "
+            f"Rainfall_of_the_month: {row['Rainfall']*30} mm | "
+            f"Relative humidity: {row['Moist']} % | "
+            f"Wind Speed: {row['Wind Speed']} m/s \n"
         )
     return prompt
 
@@ -95,10 +97,10 @@ def get_rainfall_data(data_type,long, lat):
     df['ds'] = df['ds'].apply(lambda x: x.replace(day=1))
     return df   
 
-def get_temperature_data(long, lat):
+def get_weather_data(parameters, long, lat):
     start_date = '20230101'
     end_date = '20240831'
-    parameters = 'T2M'
+    parameters = parameters
     url = (
         'https://power.larc.nasa.gov/api/temporal/daily/point'
         f'?start={start_date}'
@@ -114,7 +116,7 @@ def get_temperature_data(long, lat):
     data = response.json()
 
     # Extract temperature data
-    temperature_data = data['properties']['parameter']['T2M']
+    temperature_data = data['properties']['parameter'][parameters]
     dates = list(temperature_data.keys())
     temperatures = list(temperature_data.values())
     unique_id = [0] * len(dates)
